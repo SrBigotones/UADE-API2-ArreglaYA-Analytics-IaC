@@ -21,3 +21,8 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "ssh_public_key" {
+  description = "Public SSH key for Bastion host access"
+  type        = string
+}

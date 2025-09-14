@@ -7,7 +7,7 @@ init:
 	$(TF) init
 
 plan:
-	$(TF) plan -out=$(PLAN_FILE) | tee plan.log
+	$(TF) plan -out=$(PLAN_FILE)
 
 apply:
 	$(TF) apply "$(PLAN_FILE)"

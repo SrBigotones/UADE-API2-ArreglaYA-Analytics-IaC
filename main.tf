@@ -25,6 +25,90 @@ resource "aws_vpc" "main" {
   }
 }
 
+# Get existing Internet Gateway
+data "aws_internet_gateway" "main" {
+  filter {
+    name   = "attachment.vpc-id"
+    values = [aws_vpc.main.id]
+  }
+}
+
+# Public Subnet for Bastion
+resource "aws_subnet" "public" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.0.0/24"
+  availability_zone = "us-east-1a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "arregla-ya-public"
+  }
+}
+
+# Route Table for Public Subnet
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = data.aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "arregla-ya-public-rt"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
+
+# Security Group for Bastion
+resource "aws_security_group" "bastion" {
+  name        = "arregla-ya-bastion-sg"
+  description = "Security group for Bastion Host"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # Restringe esto a tu IP en producción
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "arregla-ya-bastion-sg"
+  }
+}
+
+# EC2 Key Pair
+resource "aws_key_pair" "bastion" {
+  key_name   = "arregla-ya-bastion-key"
+  public_key = var.ssh_public_key
+}
+
+# Bastion Host
+resource "aws_instance" "bastion" {
+  ami           = "ami-0c7217cdde317cfec"  # Amazon Linux 2023 AMI
+  instance_type = "t3.micro"
+  subnet_id     = aws_subnet.public.id
+  key_name      = aws_key_pair.bastion.key_name
+
+  vpc_security_group_ids = [aws_security_group.bastion.id]
+
+  tags = {
+    Name = "arregla-ya-bastion"
+  }
+}
+
 resource "aws_subnet" "private_1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.1.0/24"
@@ -78,7 +162,7 @@ resource "aws_security_group" "rds" {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.lambda.id]
+    security_groups = [aws_security_group.lambda.id, aws_security_group.bastion.id]
   }
 
   egress {
@@ -127,6 +211,11 @@ resource "aws_db_instance" "postgres" {
   db_name                     = var.db_name
   username                    = var.db_username
   password                    = var.db_password
+
+  # Ignore password changes to prevent Terraform from trying to modify it
+  lifecycle {
+    ignore_changes = [password]
+  }
 
   # Cost + dev-friendly settings
   backup_retention_period     = 1
