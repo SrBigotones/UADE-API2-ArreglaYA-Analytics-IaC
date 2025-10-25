@@ -1,0 +1,40 @@
+# EC2 Instance for Grafana and Prometheus
+resource "aws_instance" "monitoring" {
+  ami           = "ami-0c7217cdde317cfec"  # Amazon Linux 2023 AMI
+  instance_type = "t3.micro"
+  key_name      = "arregla-ya-bastion-key"  # Mantenemos el mismo key_name para evitar recrear la instancia
+  
+  user_data = <<-EOF
+              #!/bin/bash
+              mkdir -p /home/ec2-user/.ssh
+              echo '${var.ssh_public_key}' >> /home/ec2-user/.ssh/authorized_keys
+              chmod 700 /home/ec2-user/.ssh
+              chmod 600 /home/ec2-user/.ssh/authorized_keys
+              chown -R ec2-user:ec2-user /home/ec2-user/.ssh
+              EOF
+
+  iam_instance_profile = aws_iam_instance_profile.grafana.name
+
+  # Security group rules directly in the instance
+  vpc_security_group_ids = ["default"]  # Usar el security group default
+
+  root_block_device {
+    volume_size = 20  # GB
+    volume_type = "gp3"
+  }
+
+  tags = {
+    Name = "arregla-ya-monitoring"
+  }
+}
+
+# Output the IPs for reference
+output "monitoring_public_ip" {
+  description = "Public IP of the monitoring instance"
+  value       = aws_instance.monitoring.public_ip
+}
+
+output "monitoring_private_ip" {
+  description = "Private IP of the monitoring instance"
+  value       = aws_instance.monitoring.private_ip
+}
